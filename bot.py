@@ -2,12 +2,30 @@ import discord
 import requests
 import io
 import os
+from flask import Flask
+from threading import Thread
 
-# --- CONFIGURAZIONI ---
+# --- 1. MINI SERVER WEB (Per Render e UptimeRobot) ---
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Il bot di Notion è sveglio e operativo!"
+
+def run():
+    # Chiediamo a Render quale porta vuole usare, altrimenti usiamo la 10000
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port)
+
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
+
+# --- 2. CONFIGURAZIONI DEL BOT ---
 DISCORD_TOKEN = os.environ.get('DISCORD_TOKEN')
 NOTION_TOKEN = os.environ.get('NOTION_TOKEN')
 NOTION_DATABASE_ID = os.environ.get('NOTION_DATABASE_ID')
-TARGET_CHANNEL_ID = 1002297308756586597  # L'ID del tuo canale "files" su Discord
+TARGET_CHANNEL_ID = 1002297308756586597  # Il tuo canale "files"
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -35,7 +53,7 @@ async def on_message(message):
                     # 1. Scarica il file da Discord in memoria (RAM)
                     file_bytes = await attachment.read()
                     
-                    # 2. Carica il file direttamente nei server di Notion (Limite: 20MB per file)
+                    # 2. Carica il file direttamente nei server di Notion
                     upload_url = 'https://api.notion.com/v1/file_uploads'
                     headers = {
                         'Authorization': f'Bearer {NOTION_TOKEN}',
@@ -63,7 +81,7 @@ async def on_message(message):
                     page_data = {
                         "parent": { "database_id": NOTION_DATABASE_ID },
                         "properties": {
-                            # "Nome" è la colonna principale (Titolo) nel tuo DB Notion
+                            # "Nome" è la colonna principale (Titolo) nel DB Notion
                             "Nome": {
                                 "title": [{"text": {"content": attachment.filename}}]
                             },
@@ -93,4 +111,7 @@ async def on_message(message):
                     print(f"Errore: {e}")
                     await message.channel.send("❌ Si è verificato un errore imprevisto.")
 
+# --- 3. ACCENSIONE ---
+# Prima avviamo il mini-sito per Render, poi avviamo il Bot
+keep_alive()
 client.run(DISCORD_TOKEN)
