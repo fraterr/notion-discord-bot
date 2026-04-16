@@ -1,6 +1,7 @@
 import discord
 import requests
 import io
+import os
 
 # --- CONFIGURAZIONI ---
 DISCORD_TOKEN = os.environ.get('DISCORD_TOKEN')
