@@ -2,7 +2,7 @@ import discord
 import requests
 import os
 import io
-import random # Necessario per il comando !oracle
+import random
 from flask import Flask
 from threading import Thread
 
@@ -37,7 +37,6 @@ notion_headers = {
     'Content-Type': 'application/json'
 }
 
-# Funzione di supporto per estrarre facilmente titolo e link da una riga di Notion
 def get_book_info(libro):
     try:
         titolo = libro['properties']['Name']['title'][0]['text']['content']
@@ -55,31 +54,30 @@ async def on_ready():
 
 @client.event
 async def on_message(message):
-    # Ignora i messaggi del bot stesso
     if message.author == client.user:
         return
 
     testo_messaggio = message.content.lower()
 
-    # --- COMANDO: !help ---
-    if testo_messaggio == '!help':
+    # --- COMANDO: !h? ---
+    if testo_messaggio == '!h?':
         help_text = (
             "📜 **SOTR LIBRARIAN COMMANDS:**\n\n"
+            "🔹 `!h?` - Display this list of commands.\n"
+            "🔹 `!libstats` - See how many texts we currently safeguard.\n"
             "🔹 `!library` - Download the complete catalog as a text file.\n"
             "🔹 `!search <word>` - Find specific books (e.g., `!search alchemy`).\n"
             "🔹 `!latest` - View the 5 newest additions to the library.\n"
-            "🔹 `!oracle` - Receive a random reading suggestion.\n"
-            "🔹 `!stats` - See how many texts we currently safeguard.\n\n"
+            "🔹 `!oracle` - Receive a random reading suggestion.\n\n"
             "**How to upload:** Drop a PDF in the files channel named `Title,Author.pdf`."
         )
         await message.channel.send(help_text)
         return
 
-    # --- COMANDO: !stats ---
-    if testo_messaggio == '!stats':
+    # --- COMANDO: !libstats ---
+    if testo_messaggio == '!libstats':
         try:
             query_url = f'https://api.notion.com/v1/databases/{NOTION_DATABASE_ID}/query'
-            # Chiediamo a Notion solo gli ID per risparmiare tempo e contare più in fretta
             risposta = requests.post(query_url, headers=notion_headers)
             if risposta.status_code == 200:
                 totale = len(risposta.json().get('results', []))
@@ -100,118 +98,72 @@ async def on_message(message):
                 if not libri:
                     await message.channel.send("📭 The library is empty. The Oracle is silent.")
                     return
-                
                 libro_scelto = random.choice(libri)
                 titolo, link = get_book_info(libro_scelto)
-                
                 await message.channel.send(f"🔮 **The Oracle suggests this reading for you today:**\n\n🔹 **{titolo}**\n🔗 {link}")
-            else:
-                await message.channel.send("❌ The Oracle's vision is clouded right now.")
         except Exception as e:
             print(f"Oracle Error: {e}")
         return
 
     # --- COMANDO: !latest ---
     if testo_messaggio == '!latest' or testo_messaggio == '!new':
-        await message.channel.send("🆕 Checking the newest arrivals...")
         try:
             query_url = f'https://api.notion.com/v1/databases/{NOTION_DATABASE_ID}/query'
-            # Ordiniamo per data di creazione, dal più recente al più vecchio, e ne prendiamo solo 5
             payload = {
                 "sorts": [{"timestamp": "created_time", "direction": "descending"}],
                 "page_size": 5
             }
             risposta = requests.post(query_url, headers=notion_headers, json=payload)
-            
             if risposta.status_code == 200:
                 libri = risposta.json().get('results', [])
-                if not libri:
-                    await message.channel.send("📭 No books have been added yet.")
-                    return
-
                 msg = "**🆕 HERE ARE THE 5 NEWEST ADDITIONS:**\n\n"
                 for libro in libri:
                     titolo, link = get_book_info(libro)
                     msg += f"🔹 **{titolo}**\n🔗 {link}\n\n"
-                
                 await message.channel.send(msg)
-            else:
-                await message.channel.send("❌ Error fetching new arrivals.")
         except Exception as e:
             print(f"Latest Error: {e}")
         return
 
     # --- COMANDO: !library ---
     if testo_messaggio == '!library':
-        await message.channel.send("📄 Generating the full library list, please wait...")
         try:
             query_url = f'https://api.notion.com/v1/databases/{NOTION_DATABASE_ID}/query'
             risposta = requests.post(query_url, headers=notion_headers)
-            
             if risposta.status_code == 200:
                 libri = risposta.json().get('results', [])
-                if not libri:
-                    await message.channel.send("📭 The library is empty.")
-                    return
-
-                file_content = "SOTR LIBRARY - FULL CATALOG\n"
-                file_content += "="*30 + "\n\n"
-                
+                file_content = "SOTR LIBRARY - FULL CATALOG\n" + "="*30 + "\n\n"
                 for libro in libri:
                     titolo, link = get_book_info(libro)
-                    file_content += f"BOOK: {titolo}\nLINK: {link}\n"
-                    file_content += "-"*20 + "\n"
-
+                    file_content += f"BOOK: {titolo}\nLINK: {link}\n" + "-"*20 + "\n"
                 buffer = io.BytesIO(file_content.encode('utf-8'))
-                await message.channel.send(
-                    content="✅ Here is the complete list of books:",
-                    file=discord.File(buffer, filename="sotr_library_list.txt")
-                )
-            else:
-                await message.channel.send("❌ Error connecting to Notion.")
+                await message.channel.send(content="✅ Complete list generated:", file=discord.File(buffer, filename="sotr_library_list.txt"))
         except Exception as e:
             print(f"Library Error: {e}")
         return
 
-    # --- COMANDO: !search <string> ---
+    # --- COMANDO: !search ---
     if testo_messaggio.startswith('!search '):
         search_query = testo_messaggio[8:].strip()
-        if not search_query:
-            await message.channel.send("❓ Please provide a search term. Example: `!search alchemy`.")
-            return
-
-        await message.channel.send(f"🔍 Searching for '{search_query}' in the library...")
         try:
             query_url = f'https://api.notion.com/v1/databases/{NOTION_DATABASE_ID}/query'
-            payload = {
-                "filter": {
-                    "property": "Name",
-                    "title": {"contains": search_query}
-                }
-            }
+            payload = {"filter": {"property": "Name", "title": {"contains": search_query}}}
             risposta = requests.post(query_url, headers=notion_headers, json=payload)
-            
             if risposta.status_code == 200:
                 results = risposta.json().get('results', [])
                 if not results:
                     await message.channel.send(f"❌ No books found matching '{search_query}'.")
                     return
-
                 msg = f"✅ Found **{len(results)}** match(es):\n\n"
                 for libro in results:
                     titolo, link = get_book_info(libro)
                     msg += f"🔹 **{titolo}**\n🔗 {link}\n\n"
-                
-                if len(msg) > 2000:
-                    msg = msg[:1900] + "\n...[Too many results, please be more specific!]"
-                await message.channel.send(msg)
-            else:
-                await message.channel.send("❌ Error performing the search.")
+                await message.channel.send(msg[:2000])
         except Exception as e:
             print(f"Search Error: {e}")
         return
 
-    # --- FUNZIONE ORIGINALE: CARICAMENTO PDF ---
+    # --- UPLOAD PDF ---
     if message.channel.id == TARGET_CHANNEL_ID and message.attachments:
         for attachment in message.attachments:
             if attachment.filename.lower().endswith('.pdf'):
@@ -227,10 +179,8 @@ async def on_message(message):
                     }
                     requests.post(page_url, headers=notion_headers, json=page_data)
                     await message.channel.send("✅ Notion library updated.")
-                except Exception as e:
-                    print(f"Upload Error: {e}")
+                except:
                     await message.channel.send("❌ Failed to add to Notion.")
 
-# --- 3. STARTUP ---
 keep_alive()
 client.run(DISCORD_TOKEN)
